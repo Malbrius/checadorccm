@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Checador CAT CCM</title>
+    <link rel="stylesheet" href="../css/style.css">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <div class="logo">
+                <i class="fas fa-clock"></i>
+                <h1>Checador CAT CCM</h1>
+            </div>
+            <div class="datetime" id="datetime"></div>
+        </header>
+
+        <main class="main-content">
+            <!-- Paso 1: Ingreso de número de empleado -->
+            <div class="card" id="empleado-card">
+                <div class="card-header">
+                    <i class="fas fa-id-badge"></i>
+                    <h2>Identificación de Empleado</h2>
+                </div>
+                <div class="card-body">
+                    <div class="input-group">
+                        <label for="numero-empleado">Número de Empleado</label>
+                        <input 
+                            type="text" 
+                            id="numero-empleado" 
+                            placeholder="9..."
+                            maxlength="8"
+                            pattern="[0-9]{8}"
+                            autocomplete="off"
+                        >
+                        <div class="input-feedback" id="empleado-feedback"></div>
+                    </div>
+                    <button class="btn btn-primary" id="validar-empleado">
+                        <i class="fas fa-search"></i>
+                        Validar Empleado
+                    </button>
+                </div>
+            </div>
+
+            <!-- Paso 2: Información del empleado y acciones -->
+            <div class="card hidden" id="info-card">
+                <div class="card-header">
+                    <i class="fas fa-user"></i>
+                    <h2>Información del Empleado</h2>
+                </div>
+                <div class="card-body">
+                    <div class="empleado-info">
+                        <div class="info-item">
+                            <label>Empleado:</label>
+                            <span id="empleado-nombre">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Estado Actual:</label>
+                            <span id="empleado-estado" class="estado-badge">-</span>
+                        </div>
+                        <div class="info-item">
+                            <label>Último Registro:</label>
+                            <span id="ultimo-registro">-</span>
+                        </div>
+                    </div>
+                    
+                    <div class="acciones">
+                        <button class="btn btn-success" id="btn-entrada">
+                            <i class="fas fa-sign-in-alt"></i>
+                            <span id="texto-entrada">Entrada</span>
+                        </button>
+                        <button class="btn btn-danger" id="btn-salida">
+                            <i class="fas fa-sign-out-alt"></i>
+                            <span id="texto-salida">Salida</span>
+                        </button>
+                    </div>
+                    
+                    <button class="btn btn-secondary" id="nuevo-empleado">
+                        <i class="fas fa-user-plus"></i>
+                        Otro Empleado
+                    </button>
+                </div>
+            </div>
+            <!-- Modal para registrar nuevo empleado -->
+            <div class="modal-overlay hidden" id="modal-registro">
+                <div class="modal">
+                    <div class="modal-header">
+                        <h3><i class="fas fa-user-plus"></i> Registrar Nuevo Empleado</h3>
+                        <button class="modal-close" id="cerrar-modal">
+                            <i class="fas fa-times"></i>
+                        </button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="input-group">
+                            <label for="registro-numero">Número de Empleado</label>
+                            <input 
+                                type="text" 
+                                id="registro-numero" 
+                                maxlength="8"
+                                pattern="[0-9]{8}"
+                                readonly
+                            >
+                        </div>
+                        <div class="input-group">
+                            <label for="registro-nombre">Nombre Completo</label>
+                            <input 
+                                type="text" 
+                                id="registro-nombre" 
+                                placeholder="Ingrese el nombre completo"
+                                maxlength="100"
+                            >
+                            <div class="input-feedback" id="nombre-feedback"></div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button class="btn btn-secondary" id="cancelar-registro">
+                            <i class="fas fa-times"></i>
+                            Cancelar
+                        </button>
+                        <button class="btn btn-primary" id="confirmar-registro">
+                            <i class="fas fa-save"></i>
+                            Registrar Empleado
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <!-- Paso 3: Captura de foto -->
+            <div class="card hidden" id="foto-card">
+                <div class="card-header">
+                    <i class="fas fa-camera"></i>
+                    <h2>Captura de Fotografía</h2>
+                </div>
+                <div class="card-body">
+                    <div class="camera-container">
+                        <video id="video" autoplay playsinline></video>
+                        <canvas id="canvas" class="hidden"></canvas>
+                        <div id="foto-preview" class="hidden">
+                            <img id="foto-img" alt="Foto capturada">
+                        </div>
+                    </div>
+                    
+                    <div class="camera-controls">
+                        <button class="btn btn-primary" id="capturar-foto">
+                            <i class="fas fa-camera"></i>
+                            Capturar Foto
+                        </button>
+                        <button class="btn btn-secondary hidden" id="nueva-foto">
+                            <i class="fas fa-redo"></i>
+                            Tomar Nueva Foto
+                        </button>
+                        <button class="btn btn-success hidden" id="confirmar-foto">
+                            <i class="fas fa-check"></i>
+                            Confirmar Registro
+                        </button>
+                    </div>
+                    
+                    <button class="btn btn-outline" id="cancelar-proceso">
+                        <i class="fas fa-times"></i>
+                        Cancelar
+                    </button>
+                </div>
+            </div>
+
+            <!-- Historial de registros -->
+            <div class="card" id="historial-card">
+                <div class="card-header">
+                    <i class="fas fa-history"></i>
+                    <h2>Historial de Registros</h2>
+                    <button class="btn btn-small" id="toggle-historial">
+                        <i class="fas fa-chevron-down"></i>
+                    </button>
+                </div>
+                <div class="card-body hidden" id="historial-body">
+                    <div class="historial-filters">
+                        <input type="date" id="filtro-fecha" class="form-input">
+                        <button class="btn btn-small" id="aplicar-filtro">
+                            <i class="fas fa-filter"></i>
+                            Filtrar
+                        </button>
+                    </div>
+                    <div class="historial-lista" id="historial-lista">
+                        <div class="no-registros">No hay registros para mostrar</div>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Loading overlay -->
+        <div class="loading-overlay hidden" id="loading">
+            <div class="loading-spinner">
+                <i class="fas fa-spinner fa-spin"></i>
+                <p id="loading-text">Procesando...</p>
+            </div>
+        </div>
+
+        <!-- Notificaciones -->
+        <div class="notifications" id="notifications"></div>
+    </div>
+
+    <script src="../js/main.js"></script>
+</body>
+</html>
