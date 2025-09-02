@@ -99,6 +99,25 @@ class ChecadorModel {
         }
     }
 
+    // Método para verificar si el empleado ya tuvo break hoy
+    private function yatuvoBreakHoy($numeroEmpleado) {
+        try {
+            $query = "SELECT COUNT(*) as total FROM " . $this->table_registros . 
+                    " WHERE numero_empleado = :numero_empleado 
+                      AND tipo_registro = 'break_out' 
+                      AND DATE(fecha_hora) = CURDATE()";
+            
+            $stmt = $this->conn->prepare($query);
+            $stmt->bindParam(':numero_empleado', $numeroEmpleado);
+            $stmt->execute();
+            
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            return $result['total'] > 0;
+        } catch (Exception $e) {
+            return false;
+        }
+    }
+
     public function determinarTipoRegistro($numeroEmpleado, $accion) {
         try {
             $estado = $this->obtenerEstadoEmpleado($numeroEmpleado);
@@ -109,7 +128,17 @@ class ChecadorModel {
                     case 'fuera':
                         return ['tipo' => 'check_in', 'nuevo_estado' => 'trabajando'];
                     case 'en_break':
-                        return ['tipo' => 'break_in', 'nuevo_estado' => 'trabajando'];
+                        // Verificar si ya tuvo break hoy
+                        if ($this->yatuvoBreakHoy($numeroEmpleado)) {
+                            // Ya tuvo break, esta "entrada" debería ser check_out
+                            return [
+                                'error' => true,
+                                'message' => 'Ya completaste tu break hoy. Para salir definitivamente usa el botón de salida.'
+                            ];
+                        } else {
+                            // No ha tenido break, es break_in válido
+                            return ['tipo' => 'break_in', 'nuevo_estado' => 'trabajando'];
+                        }
                     case 'trabajando':
                         return [
                             'error' => true,
@@ -121,14 +150,20 @@ class ChecadorModel {
             } elseif ($accion === 'salida') {
                 switch ($estadoActual) {
                     case 'trabajando':
-                        // Determinar si es break o check_out basado en la hora
-                        $horaActual = date('H:i');
-                        $horaLimiteJornada = '17:00'; // Ajustar según necesidades
-                        
-                        if ($horaActual < $horaLimiteJornada) {
-                            return ['tipo' => 'break_out', 'nuevo_estado' => 'en_break'];
-                        } else {
+                        // Verificar si ya tuvo break hoy
+                        if ($this->yatuvoBreakHoy($numeroEmpleado)) {
+                            // Ya tuvo break, solo puede hacer check_out
                             return ['tipo' => 'check_out', 'nuevo_estado' => 'fuera'];
+                        } else {
+                            // No ha tenido break, determinar si es break o check_out basado en la hora
+                            $horaActual = date('H:i');
+                            $horaLimiteJornada = '17:00'; // Ajustar según necesidades
+                            
+                            if ($horaActual < $horaLimiteJornada) {
+                                return ['tipo' => 'break_out', 'nuevo_estado' => 'en_break'];
+                            } else {
+                                return ['tipo' => 'check_out', 'nuevo_estado' => 'fuera'];
+                            }
                         }
                     case 'fuera':
                         return [
@@ -136,10 +171,15 @@ class ChecadorModel {
                             'message' => 'El empleado no está en horario de trabajo'
                         ];
                     case 'en_break':
-                        return [
-                            'error' => true,
-                            'message' => 'El empleado ya está en break. Use entrada para regresar al trabajo.'
-                        ];
+                        // Si está en break, solo puede regresar a trabajar (break_in) o salir definitivamente
+                        if ($this->yatuvoBreakHoy($numeroEmpleado)) {
+                            return ['tipo' => 'check_out', 'nuevo_estado' => 'fuera'];
+                        } else {
+                            return [
+                                'error' => true,
+                                'message' => 'Estás en break. Use entrada para regresar al trabajo o espera para salir definitivamente.'
+                            ];
+                        }
                     default:
                         return ['error' => true, 'message' => 'Estado no válido'];
                 }
@@ -246,6 +286,7 @@ class ChecadorModel {
             throw new Exception('Error al obtener historial: ' . $e->getMessage());
         }
     }
+    
     public function crearEmpleado($numeroEmpleado, $nombre) {
         try {
             $this->conn->beginTransaction();
@@ -293,5 +334,4 @@ class ChecadorModel {
             ];
         }
     }
-    
 }

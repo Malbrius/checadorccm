@@ -1,9 +1,9 @@
 <?php
 class Database {
-    private $host = '127.0.0.1';
+    private $host = 'localhost';
     private $db_name = 'checador_db';
     private $username = 'root';
-    private $password = 'oE0aIbr]x1(.LH1o';
+    private $password = '';
     private $conn;
 
     public function getConnection() {
@@ -28,9 +28,9 @@ class Database {
 class FTPConfig {
     const FTP_SERVER = '127.0.0.1';
     const FTP_USERNAME = 'user';
-    const FTP_PASSWORD = '1';
+    const FTP_PASSWORD = '';
     const FTP_PORT = 21;
-    const SFTP_PORT = 22;
+    const SFTP_PORT = 21;
     const REMOTE_PATH = '/fotos_checador/';
     const LOCAL_TEMP_PATH = __DIR__ . '/../temp/';
     const BASE_URL = 'https://127.0.0.1/fotos_checador/';

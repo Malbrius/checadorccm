@@ -20,45 +20,95 @@ class FotoModel {
             // Verificar y redimensionar imagen si es necesario
             $fotoOptimizada = $this->redimensionarImagen($fotoBase64);
             
-            // Generar nombre único para la foto
+            // Generar nombre único para la foto (solo caracteres válidos)
             $timestamp = date('YmdHis');
-            $nombreArchivo = "checador_{$numeroEmpleado}_{$timestamp}.jpg";
+            $nombreArchivo = "checador_" . $numeroEmpleado . "_" . $timestamp . ".jpg";
             $rutaLocal = $this->tempPath . $nombreArchivo;
             
-            // Decodificar y guardar foto localmente
+            // Asegurar que el directorio temporal existe y es escribible
+            if (!is_dir($this->tempPath)) {
+                if (!mkdir($this->tempPath, 0755, true)) {
+                    throw new Exception('No se pudo crear el directorio temporal');
+                }
+            }
+            
+            if (!is_writable($this->tempPath)) {
+                throw new Exception('El directorio temporal no es escribible');
+            }
+            
+            // Decodificar imagen
             $fotoData = base64_decode(preg_replace('#^data:image/\w+;base64,#i', '', $fotoOptimizada));
             
             if ($fotoData === false) {
                 throw new Exception('Error al decodificar la imagen');
             }
             
-            if (file_put_contents($rutaLocal, $fotoData) === false) {
-                throw new Exception('Error al guardar la imagen localmente');
+            // Verificar que los datos de la imagen no estén vacíos
+            if (empty($fotoData)) {
+                throw new Exception('Los datos de la imagen están vacíos');
             }
             
-            // Subir por FTP/SFTP
+            // Guardar foto localmente primero
+            $bytesEscritos = file_put_contents($rutaLocal, $fotoData);
+            
+            if ($bytesEscritos === false) {
+                throw new Exception('Error al escribir la imagen en el directorio temporal');
+            }
+            
+            if ($bytesEscritos === 0) {
+                throw new Exception('Se escribieron 0 bytes en el archivo temporal');
+            }
+            
+            // Verificar que el archivo realmente existe y tiene contenido
+            if (!file_exists($rutaLocal)) {
+                throw new Exception('El archivo temporal no se creó correctamente');
+            }
+            
+            $tamañoArchivo = filesize($rutaLocal);
+            if ($tamañoArchivo === false || $tamañoArchivo === 0) {
+                // Limpiar archivo vacío
+                if (file_exists($rutaLocal)) {
+                    unlink($rutaLocal);
+                }
+                throw new Exception('El archivo temporal está vacío o no se puede leer');
+            }
+            
+            // Log para depuración
+            error_log("Archivo temporal creado: {$rutaLocal} - Tamaño: {$tamañoArchivo} bytes");
+            
+            // Intentar subir por FTP primero
             $urlRemota = $this->subirPorFTP($rutaLocal, $nombreArchivo);
             
             if (!$urlRemota) {
                 // Si falla FTP, intentar con SFTP
+                error_log("FTP falló, intentando SFTP...");
                 $urlRemota = $this->subirPorSFTP($rutaLocal, $nombreArchivo);
             }
             
-            // Limpiar archivo temporal
+            // Limpiar archivo temporal solo después de intentar subirlo
             if (file_exists($rutaLocal)) {
                 unlink($rutaLocal);
+                error_log("Archivo temporal eliminado: {$rutaLocal}");
             }
             
             if ($urlRemota) {
                 return [
                     'success' => true,
                     'url' => $urlRemota,
-                    'filename' => $nombreArchivo
+                    'filename' => $nombreArchivo,
+                    'size' => $tamañoArchivo
                 ];
             } else {
-                throw new Exception('Error al subir la imagen al servidor remoto');
+                throw new Exception('Error al subir la imagen al servidor remoto (FTP y SFTP fallaron)');
             }
+            
         } catch (Exception $e) {
+            // Asegurar limpieza en caso de error
+            if (isset($rutaLocal) && file_exists($rutaLocal)) {
+                unlink($rutaLocal);
+                error_log("Archivo temporal eliminado por error: {$rutaLocal}");
+            }
+            
             return [
                 'success' => false,
                 'message' => 'Error al procesar foto: ' . $e->getMessage()
@@ -68,36 +118,80 @@ class FotoModel {
 
     private function subirPorFTP($rutaLocal, $nombreArchivo) {
         try {
+            // Verificar que el archivo local existe antes de intentar subirlo
+            if (!file_exists($rutaLocal)) {
+                throw new Exception('El archivo local no existe: ' . $rutaLocal);
+            }
+            
+            if (!is_readable($rutaLocal)) {
+                throw new Exception('El archivo local no es legible: ' . $rutaLocal);
+            }
+            
+            $tamañoLocal = filesize($rutaLocal);
+            if ($tamañoLocal === false || $tamañoLocal === 0) {
+                throw new Exception('El archivo local está vacío o no se puede leer su tamaño');
+            }
+            
+            error_log("Intentando subir archivo por FTP: {$rutaLocal} ({$tamañoLocal} bytes)");
+            
             $conexionFTP = ftp_connect(FTPConfig::FTP_SERVER, FTPConfig::FTP_PORT, 30);
             
             if (!$conexionFTP) {
-                throw new Exception('No se pudo conectar al servidor FTP');
+                throw new Exception('No se pudo conectar al servidor FTP: ' . FTPConfig::FTP_SERVER . ':' . FTPConfig::FTP_PORT);
             }
             
             $login = ftp_login($conexionFTP, FTPConfig::FTP_USERNAME, FTPConfig::FTP_PASSWORD);
             
             if (!$login) {
                 ftp_close($conexionFTP);
-                throw new Exception('Error de autenticación FTP');
+                throw new Exception('Error de autenticación FTP para usuario: ' . FTPConfig::FTP_USERNAME);
             }
             
             // Activar modo pasivo
             ftp_pasv($conexionFTP, true);
             
-            // Crear directorio remoto si no existe
-            $rutaRemota = FTPConfig::REMOTE_PATH . $nombreArchivo;
+            // Verificar/crear directorio remoto
+            $directorioRemoto = rtrim(FTPConfig::REMOTE_PATH, '/');
+            if (!empty($directorioRemoto)) {
+                // Intentar cambiar al directorio, si no existe intentar crearlo
+                if (!@ftp_chdir($conexionFTP, $directorioRemoto)) {
+                    error_log("Directorio remoto no existe, intentando crear: {$directorioRemoto}");
+                    if (!@ftp_mkdir($conexionFTP, $directorioRemoto)) {
+                        error_log("No se pudo crear el directorio, continuando...");
+                    }
+                }
+            }
+            
+            // Preparar ruta remota completa
+            $rutaRemota = $directorioRemoto . '/' . $nombreArchivo;
+            
+            // Limpiar la ruta (eliminar dobles barras)
+            $rutaRemota = preg_replace('#/+#', '/', $rutaRemota);
+            
+            error_log("Subiendo archivo a: {$rutaRemota}");
             
             // Subir archivo
             $subida = ftp_put($conexionFTP, $rutaRemota, $rutaLocal, FTP_BINARY);
             
-            ftp_close($conexionFTP);
-            
             if ($subida) {
-                return FTPConfig::BASE_URL . $nombreArchivo;
-            } else {
-                throw new Exception('Error al subir archivo por FTP');
+                // Verificar que el archivo se subió correctamente
+                $tamañoRemoto = ftp_size($conexionFTP, $rutaRemota);
+                if ($tamañoRemoto !== -1 && $tamañoRemoto === $tamañoLocal) {
+                    error_log("Archivo subido exitosamente por FTP: {$rutaRemota} ({$tamañoRemoto} bytes)");
+                    ftp_close($conexionFTP);
+                    return FTPConfig::BASE_URL . $nombreArchivo;
+                } else {
+                    error_log("El archivo se subió pero los tamaños no coinciden. Local: {$tamañoLocal}, Remoto: {$tamañoRemoto}");
+                }
             }
+            
+            ftp_close($conexionFTP);
+            throw new Exception('Error al subir archivo por FTP - ftp_put falló');
+            
         } catch (Exception $e) {
+            if (isset($conexionFTP) && $conexionFTP) {
+                ftp_close($conexionFTP);
+            }
             error_log('Error FTP: ' . $e->getMessage());
             return false;
         }
